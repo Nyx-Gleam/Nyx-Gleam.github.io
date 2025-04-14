@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from chatbot_core import AILocalChatbot
 import logging
+import os
 
 # Configuración única de Flask y CORS
 app = Flask(__name__)
