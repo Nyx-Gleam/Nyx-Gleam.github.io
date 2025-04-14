@@ -1,11 +1,14 @@
 import sys
 import os
-# Removemos el append del sys.path si usamos rutas absolutas basadas en __file__
-# sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from pathlib import Path
+
+# Obtener la carpeta raíz del proyecto: asumiendo que este archivo está en backend/
+base_dir = Path(__file__).resolve().parent.parent
+# Agregar la raíz del proyecto al sys.path
+sys.path.insert(0, str(base_dir))
 
 import json
 import time
-from pathlib import Path
 from continuous_learning import ContinuousLearningSystem
 from ctransformers import AutoModelForCausalLM
 
@@ -13,8 +16,7 @@ class AILocalChatbot:
     def __init__(self, model_path, config_dir="config", data_dir="data"):
         self.model_path = model_path
         
-        # Obtener la carpeta raíz del proyecto: asumiendo que este archivo está en backend/
-        base_dir = Path(__file__).resolve().parent.parent
+        # Usar la carpeta raíz del proyecto para obtener las rutas de configuración y datos
         self.config_dir = base_dir / config_dir
         self.data_dir = base_dir / data_dir
         
