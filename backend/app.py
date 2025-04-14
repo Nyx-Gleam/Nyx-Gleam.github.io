@@ -20,8 +20,16 @@ def handle_chat():
         
         if not user_message:
             return jsonify({"error": "Mensaje vacío"}), 400
+
+        # Mensaje de log indicando que se está formulando el mensaje
+        logging.info("Formulando mensaje: %s", user_message)
         
+        # Generar la respuesta del chatbot
         response = chatbot.generate_response(user_message)
+        
+        # Mensaje de log indicando que se está formulando la respuesta
+        logging.info("Formulando respuesta: %s", response)
+        
         return jsonify({"response": response})
     
     except Exception as e:
