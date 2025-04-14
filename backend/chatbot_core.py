@@ -2,36 +2,63 @@ import sys
 import os
 import json
 import time
+import socket
 from pathlib import Path
-from continuous_learning import ContinuousLearningSystem
-from ctransformers import AutoModelForCausalLM
-from tkinter import Tk, messagebox
 
 base_dir = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(base_dir))
 
+from continuous_learning import ContinuousLearningSystem
+from ctransformers import AutoModelForCausalLM
+from tkinter import Tk, messagebox
+
+
+
 class AILocalChatbot:
     def __init__(self, model_path, config_dir="config", data_dir="data"):
         self.model_path = model_path
-        
-        # Usar la carpeta raíz del proyecto para obtener las rutas de configuración y datos
+
+        # Si no se pasa modelo, buscar en carpeta `models/`
+        if not self.model_path:
+            self.model_path = self._select_model_file_with_tkinter()
+
         self.config_dir = base_dir / config_dir
         self.data_dir = base_dir / data_dir
-        
         self.conversation_history = []
-        
-        # Cargar configuraciones
+
         self.personality = self._load_config("personality.json")
         self.settings = self._load_config("settings.json")
-        
-        # Inicializar subsistemas
+
         self.learning_system = ContinuousLearningSystem(
             data_dir=self.data_dir,
             config_dir=self.config_dir
         )
-        
-        # Cargar modelo
+
         self._load_model()
+    
+    def _select_model_file_with_tkinter(self):
+        model_dir = base_dir / "models"
+        gguf_files = [f for f in os.listdir(model_dir) if f.endswith(".gguf")]
+
+        if not gguf_files:
+            raise FileNotFoundError("No .gguf model files found in 'models/' folder.")
+
+        elif len(gguf_files) == 1:
+            return model_dir / gguf_files[0]
+
+        else:
+            root = Tk()
+            root.withdraw()
+            model_name = simpledialog.askstring(
+                "Seleccionar modelo",
+                "Hay múltiples modelos disponibles:\n\n" + "\n".join(gguf_files) + "\n\nEscribe el nombre exacto del modelo:"
+            )
+            root.destroy()
+
+            if not model_name or model_name not in gguf_files:
+                raise ValueError("Modelo no válido o no seleccionado.")
+            
+            return model_dir / model_name
         
     def _load_config(self, filename):
         config_path = self.config_dir / filename
