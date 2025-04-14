@@ -1,0 +1,54 @@
+chatbot-local/
+├── models/                  # Carpeta para almacenar los modelos de lenguaje
+│   └── llama-7b-q4_k_m.bin  # Ejemplo de un modelo cuantizado de LLaMA
+│
+├── data/                    # Datos del chatbot
+│   ├── dictionary.json      # Diccionario de palabras aprendidas
+│   ├── phrases.json         # Frases aprendidas por el sistema
+│   └── conversation_history/ # Historial de conversaciones guardadas
+│
+├── config/                  # Archivos de configuración
+│   ├── personality.json     # Definición de la personalidad del chatbot
+│   └── settings.json        # Configuración general del sistema
+│
+├── src/                     # Código fuente
+│   ├── chatbot_core.py      # Núcleo del chatbot (sistema principal)
+│   ├── continuous_learning.py # Sistema de aprendizaje continuo
+│   ├── web_search.py        # Módulo de búsqueda en internet
+│   └── gui.py               # Interfaz gráfica
+│
+├── logs/                    # Registros del sistema
+│   └── chatbot.log          # Archivo de registro
+│
+├── requirements.txt         # Dependencias del proyecto
+├── main.py                  # Punto de entrada principal
+└── README.md                # Documentación
+
+
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from chatbot_core import AILocalChatbot
+
+app = Flask(__name__)
+CORS(app)  # Habilitar CORS para GitHub Pages
+
+# Cargar el modelo al iniciar
+chatbot = AILocalChatbot("models/mistral-7b-instruct-v0.1.Q4_K_M.gguf")
+
+@app.route('/api/chat', methods=['POST'])
+def handle_chat():
+    data = request.get_json()
+    user_message = data.get('message', '')
+    
+    if not user_message:
+        return jsonify({"error": "Mensaje vacío"}), 400
+    
+    try:
+        response = chatbot.generate_response(user_message)
+        return jsonify({"response": response})
+    
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
