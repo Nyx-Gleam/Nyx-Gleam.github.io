@@ -105,6 +105,15 @@ Open `frontend/index.html` directly in a browser or host it using a local web se
 
 ---
 
+## 📦 Pre-packaged Release
+
+If you download the chatbot from the **[Releases](https://github.com/Nyx-Gleam/AI-ChatBot/releases)** section, it will come with a **default lightweight model** already placed in the `models/` directory.  
+This model is optimized for **low resource usage**, making it ideal for testing, development, or running on less powerful machines.
+
+> 🧠 For better performance or more advanced capabilities, you can manually replace it with a larger model (e.g., LLaMA, GPT-2, Mistral) of your choice.
+
+---
+
 ## 📌 API Endpoints
 
 ### `POST /api/chat`
