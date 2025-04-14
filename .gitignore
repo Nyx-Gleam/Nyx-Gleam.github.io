@@ -1,0 +1,16 @@
+# Archivos y carpetas de entorno virtual
+venv/
+env/
+
+# Archivos de Python compilados
+__pycache__/
+*.pyc
+
+# Logs
+logs/
+*.log
+
+# Configuración local (si no deseas subir datos sensibles)
+chatbot_config.json
+
+# Otros archivos o carpetas temporales
