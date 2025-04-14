@@ -53,7 +53,7 @@ def _corsify_response(response, status_code=200):
     response.headers.add("Access-Control-Allow-Credentials", "true")
     return response
 
-@app.route('api/health', methods=['GET'])
+@app.route('/api/health', methods=['GET'])
 def health_check():
     return jsonify({
         "status": "ok",
