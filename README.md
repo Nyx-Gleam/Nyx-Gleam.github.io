@@ -2,6 +2,8 @@
 
 An offline AI-powered chatbot designed for local use with full customization of its personality. Built using Flask for the backend and a lightweight web frontend, this project offers a modular and extensible architecture for experimenting with local LLMs.
 
+🌐 **Live Demo**: [Try the latest version here](https://nyx-gleam.github.io/frontend/index.html)
+
 ---
 
 ## 🚀 Features
