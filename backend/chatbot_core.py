@@ -1,8 +1,11 @@
+import sys
 import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import json
 import time
 from pathlib import Path
-from ..continuous_learning import ContinuousLearningSystem
+from continuous_learning import ContinuousLearningSystem
 from ctransformers import AutoModelForCausalLM
 
 class AILocalChatbot:
@@ -37,7 +40,6 @@ class AILocalChatbot:
         self.llm = AutoModelForCausalLM.from_pretrained(
             self.model_path,
             model_type=model_type,
-            config_file=str(self.config_dir / 'model_config.yaml'),
             context_length=2048,
             gpu_layers=0
         )
@@ -48,5 +50,31 @@ class AILocalChatbot:
         if "mistral" in model_file: return "mistral"
         if "gpt2" in model_file: return "gpt2"
         return "llama"
-    
-    # Añadir aquí los demás métodos (generate_response, format_prompt, etc.)
+
+    def format_prompt(self, user_input):
+        system_prompt = self.personality.get("system_prompt", "")
+        history_formatted = ""
+        for i, message in enumerate(self.conversation_history[-self.settings.get("history_length", 5):]):
+            role = "User" if i % 2 == 0 else "Assistant"
+            history_formatted += f"{role}: {message}\n"
+        full_prompt = f"{system_prompt}\n{history_formatted}User: {user_input}\nAssistant:"
+        return full_prompt
+
+    def generate_response(self, user_input):
+        prompt = self.format_prompt(user_input)
+
+        response = ""
+        for token in self.llm(prompt, stream=True):
+            response += token
+
+        # Guardar en el historial
+        self.conversation_history.append(user_input)
+        self.conversation_history.append(response.strip())
+
+        # Aprendizaje continuo
+        self.learning_system.save_interaction(user_input, response.strip())
+
+        return response.strip()
+
+    def reset_history(self):
+        self.conversation_history = []

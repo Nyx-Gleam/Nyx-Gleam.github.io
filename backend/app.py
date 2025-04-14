@@ -10,7 +10,7 @@ CORS(app)  # Permite solicitudes desde cualquier origen (*)
 logging.basicConfig(level=logging.DEBUG)
 
 # Inicializar el chatbot (ajusta la ruta del modelo)
-chatbot = AILocalChatbot("../models/mistral-7b-instruct-v0.1.Q4_K_M.gguf")
+chatbot = AILocalChatbot("models/mistral-7b-instruct-v0.1.Q4_K_M.gguf")
 
 @app.route('/api/chat', methods=['POST'])
 def handle_chat():

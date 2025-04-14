@@ -1,0 +1,6 @@
+{
+    "temperature": 0.75,
+    "max_new_tokens": 256,
+    "stop_sequences": ["</s>", "<|endoftext|>"]
+  }
+  

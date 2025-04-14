@@ -9,7 +9,7 @@ async function sendMessage() {
     input.value = '';
 
     try {
-        const response = await fetch('https://tu-backend.com/api/chat', {
+        const response = await fetch('https://ai-chatbot-backend-a0x5.onrender.com/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ message: userMessage })
