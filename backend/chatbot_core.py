@@ -1,6 +1,7 @@
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Removemos el append del sys.path si usamos rutas absolutas basadas en __file__
+# sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import json
 import time
@@ -11,8 +12,12 @@ from ctransformers import AutoModelForCausalLM
 class AILocalChatbot:
     def __init__(self, model_path, config_dir="config", data_dir="data"):
         self.model_path = model_path
-        self.config_dir = Path(config_dir)
-        self.data_dir = Path(data_dir)
+        
+        # Obtener la carpeta raíz del proyecto: asumiendo que este archivo está en backend/
+        base_dir = Path(__file__).resolve().parent.parent
+        self.config_dir = base_dir / config_dir
+        self.data_dir = base_dir / data_dir
+        
         self.conversation_history = []
         
         # Cargar configuraciones
