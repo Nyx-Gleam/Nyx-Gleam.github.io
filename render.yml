@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: ai-chatbot-backend
+    env: python
+    plan: free
+    buildCommand: ""
+    startCommand: python backend/app.py
+    envVars:
+      - key: FLASK_ENV
+        value: production
