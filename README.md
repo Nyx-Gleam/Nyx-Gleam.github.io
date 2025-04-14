@@ -83,8 +83,8 @@ models/
 Make sure the following exist:
 
 ```bash
-mkdir logs
-touch logs/chatbot.logs
+logs/
+└── chatbot.logs
 ```
 
 This file will store previous chat conversations for training and learning purposes.
