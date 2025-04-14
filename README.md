@@ -62,7 +62,7 @@ AI-ChatBot/
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/AI-ChatBot.git
+git clone https://github.com/Nyx-Gleam/AI-ChatBot.git
 cd AI-ChatBot
 ```
 
