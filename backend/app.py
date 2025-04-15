@@ -1,3 +1,4 @@
+#backend/app.py
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from chatbot_core import AILocalChatbot
@@ -29,11 +30,29 @@ def handle_chat():
         
         data = request.get_json()
         user_message = data.get('message', '')
+        history = data.get('history', [])  # Obtener el historial de la solicitud
         
         if not user_message:
             return jsonify({"error": "Mensaje vacío"}), 400
 
+        # Actualizar historial del chatbot si se proporciona
+        if history:
+            # Reiniciar el historial del chatbot
+            chatbot.reset_history()
+            
+            # Reconstruir el historial desde los mensajes recibidos
+            for msg in history:
+                if 'role' in msg and 'content' in msg:
+                    if msg['role'] == 'user':
+                        # Añadir solo el mensaje del usuario
+                        chatbot.conversation_history.append(msg['content'])
+                    elif msg['role'] == 'assistant' and len(chatbot.conversation_history) > 0:
+                        # Añadir la respuesta del asistente después de un mensaje de usuario
+                        chatbot.conversation_history.append(msg['content'])
+
         logging.info("Procesando mensaje: %s", user_message)
+        logging.debug("Historial actual: %s", chatbot.conversation_history)
+        
         response = chatbot.generate_response(user_message)
         logging.info("Respuesta generada: %s", response[:50] + "...")  # Log parcial
         

@@ -1,7 +1,5 @@
 import json
 import os
-import requests
-from bs4 import BeautifulSoup
 from datetime import datetime
 
 class ContinuousLearningSystem:
@@ -43,9 +41,9 @@ class ContinuousLearningSystem:
             results = []
             
             for result in soup.find_all('div', class_='result', limit=num_results):
-                title = result.find('h2').get_text(strip=True) if result.find('h2') else "Sin título"
+                title = result.find('h2').get_text(strip=True) if result.find('h2') else "No title"
                 snippet = result.find('a', class_='result__snippet')
-                snippet_text = snippet.get_text(strip=True) if snippet else "Sin resumen"
+                snippet_text = snippet.get_text(strip=True) if snippet else "No summary"
                 link = result.find('a', href=True)['href'] if result.find('a', href=True) else "#"
                 
                 results.append({
@@ -57,5 +55,38 @@ class ContinuousLearningSystem:
             return results
             
         except Exception as e:
-            print(f"Error en búsqueda web: {e}")
+            print(f"Error in web search: {e}")
             return []
+
+    def save_interaction(self, user_input, response):
+        """
+        Guarda la interacción (mensaje de usuario y respuesta) en un archivo JSON dentro del directorio
+        'conversation_history' en self.data_dir.
+        """
+        # Directorio para guardar el historial de conversación:
+        history_folder = os.path.join(self.data_dir, "conversation_history")
+        os.makedirs(history_folder, exist_ok=True)
+        
+        # Archivo donde se almacenarán las interacciones
+        history_file = os.path.join(history_folder, "conversation_history.json")
+        interaction = {
+            "timestamp": datetime.now().isoformat(),
+            "user": user_input,
+            "response": response
+        }
+        
+        # Leer interacciones previas o iniciar con lista vacía
+        if os.path.exists(history_file):
+            try:
+                with open(history_file, "r", encoding="utf-8") as f:
+                    history = json.load(f)
+            except Exception:
+                history = []
+        else:
+            history = []
+        
+        history.append(interaction)
+        
+        # Guardar el historial actualizado
+        with open(history_file, "w", encoding="utf-8") as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)

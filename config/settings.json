@@ -1,6 +1,6 @@
 {
-    "temperature": 0.75,
-    "max_new_tokens": 256,
-    "stop_sequences": ["</s>", "<|endoftext|>"]
-  }
-  
+  "history_length": 3,
+  "max_response_length": 2048,
+  "temperature": 0.5,
+  "stop_sequences": ["</s>", "<|endoftext|>"]
+}
