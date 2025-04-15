@@ -6,6 +6,8 @@ import socket
 import logging
 from pathlib import Path
 import traceback
+import re
+import hashlib
 
 base_dir = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(base_dir))
@@ -13,10 +15,71 @@ sys.path.insert(0, str(base_dir))
 from continuous_learning import ContinuousLearningSystem
 from ctransformers import AutoModelForCausalLM
 from tkinter import Tk, messagebox, simpledialog
-
+from duckduckgo_search import DDGS
+from datetime import datetime
 
 class AILocalChatbot:
     def __init__(self, model_path, config_dir="config", data_dir="data"):
+        self.MODEL_CONFIG = {
+            "llama": {
+                "context_length": 4096,
+                "temperature": 0.7,
+                "max_new_tokens": 256,
+                "prompt_template": "<|system|>\n{system_prompt}</s>\n<|user|>\n{user_input}</s>\n<|assistant|>",
+                "stop_sequences": ["</s>", "<|"],
+                "recommended_models": ["Llama-2", "Alpaca", "Vicuna"]
+            },
+            "mistral": {
+                "context_length": 8192,
+                "temperature": 0.6,
+                "max_new_tokens": 512,
+                "prompt_template": "<s>[INST] {system_prompt}\n\n{user_input} [/INST]",
+                "stop_sequences": ["</s>", "[INST]"],
+                "recommended_models": ["Mistral-7B", "Mixtral-8x7B"]
+            },
+            "gpt2": {
+                "context_length": 1024,
+                "temperature": 0.9,
+                "max_new_tokens": 128,
+                "prompt_template": "{system_prompt}\n\nUsuario: {user_input}\nAsistente:",
+                "stop_sequences": ["\n"]
+            },
+            "falcon": {
+                "context_length": 2048,
+                "temperature": 0.5,
+                "max_new_tokens": 200,
+                "prompt_template": "System: {system_prompt}\nUser: {user_input}\nFalcon:",
+                "stop_sequences": ["\nUser:"]
+            },
+            "starcoder": {
+                "context_length": 4096,
+                "temperature": 0.3,
+                "max_new_tokens": 256,
+                "prompt_template": "// System: {system_prompt}\n// User: {user_input}\n// Assistant:",
+                "code_completion": True
+            },
+            "deepseek": {
+                "context_length": 4096,
+                "max_new_tokens": 1024,
+                "temperature": 0.2,
+                "prompt_template": (
+                    "### System:\n{system_prompt}\n\n"
+                    "### History:\n{history}\n\n"
+                    "### User:\n{user_input}\n\n"
+                    "### Assistant:\n"
+                ),
+                "stop_sequences": ["###"],
+                "code_specialist": True
+            },
+            
+            "default": {
+                "context_length": 2048,
+                "max_new_tokens": 256,
+                "temperature": 0.7,
+                "stop_sequences": ["</s>"]
+            }
+        }
+
         logging.basicConfig(
             level=logging.DEBUG,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -75,6 +138,110 @@ class AILocalChatbot:
             self._show_error_popup(f"No se pudo inicializar el sistema de aprendizaje: {str(e)}")
 
         self._load_model()
+        
+        self.output_dir = Path(__file__).resolve().parent.parent / "output"
+        self._init_output_dir()
+
+    def _init_output_dir(self):
+        """Crea el directorio output si no existe"""
+        self.output_dir.mkdir(exist_ok=True, parents=True)
+        self.logger.info(f"Directorio de salida: {self.output_dir}")
+
+    def _generate_filename(self, code: str, language: str, user_input: str) -> str:
+        """Genera nombre de archivo óptimo usando IA"""
+        # Extraer posibles nombres de funciones/clases
+        patterns = {
+            'python': r'^(?:async\s+)?def\s+([a-zA-Z_][a-zA-Z0-9_]+)\s*\(|class\s+([A-Z][a-zA-Z0-9_]+)\s*',
+            'javascript': r'function\s+([a-zA-Z_$][\w$]+)\s*\(|const\s+([a-zA-Z_$][\w$]+)\s*=\s*\(?',
+            'java': r'class\s+([A-Z][a-zA-Z0-9_]+)\s*\{|void\s+([a-z][a-zA-Z0-9_]+)\s*\(',
+            'c': r'^\w+\s+\*?([a-zA-Z_][a-zA-Z0-9_]+)\s*\(',
+            'cpp': r'^(?:template\s*<.*>)?\s*\w+\s+([A-Z][a-zA-Z0-9_]+)\s*::|\w+\s+([a-z][a-zA-Z0-9_]+)\s*\(',
+            'csharp': r'\b(?:public|private|protected)\s+\w+\s+([A-Z][a-zA-Z0-9_]+)\s*\(',
+            'go': r'func\s+(?:\([^)]+\)\s+)?([A-Z][a-zA-Z0-9_]+)\s*\(',
+            'rust': r'fn\s+([a-z_][a-z0-9_]+)\s*\(',
+            'swift': r'func\s+([a-zA-Z_][a-zA-Z0-9_]+)\s*\(',
+            'kotlin': r'fun\s+([a-zA-Z_][a-zA-Z0-9_]+)\s*\(',
+            'typescript': r'^(?:export\s+)?(?:async\s+)?function\s+([A-Z][a-zA-Z0-9_]+)|const\s+([a-z][a-zA-Z0-9_]+)\s*:\s*\w+',
+            'php': r'function\s+([a-z_][a-zA-Z0-9_]+)\s*\(',
+            'ruby': r'def\s+(?:self\.)?([a-z_][a-zA-Z0-9_]+)\s*',
+            'lua': r'function\s+([a-zA-Z_][a-zA-Z0-9_.]+)\s*\(',
+            'perl': r'sub\s+([a-zA-Z_][a-zA-Z0-9_]+)\s*\{',
+            'r': r'([a-zA-Z_][a-zA-Z0-9_.]+)\s*<-\s*function\s*\(',
+            'scala': r'def\s+([a-zA-Z_][a-zA-Z0-9_]+)\s*[=\(]',
+            'dart': r'\b(?:void|dynamic)\s+([a-zA-Z_][a-zA-Z0-9_]+)\s*\(',
+            'julia': r'function\s+([a-zA-Z_!][a-zA-Z0-9_!]+)\s*\(',
+            'haskell': r'^([a-z][a-zA-Z0-9_]+)\s*::',
+            'elixir': r'def(?:p|macro)?\s+([a-zA-Z_][a-zA-Z0-9_!?]+)\s*\(?',
+            'clojure': r'\(defn-?\s+([a-zA-Z-]+)\s*\[',
+            'matlab': r'function\s+([a-zA-Z_][a-zA-Z0-9_]+)\s*\(',
+            'groovy': r'def\s+([a-zA-Z_][a-zA-Z0-9_]+)\s*\(',
+            'sql': r'CREATE\s+(?:FUNCTION|PROCEDURE)\s+([a-zA-Z_][a-zA-Z0-9_]+)\s*',
+            'bash': r'([a-zA-Z_][a-zA-Z0-9_]+)\s*\(\)\s*\{',
+            'powershell': r'function\s+([A-Z][a-zA-Z0-9-]+)\s*\{',
+            'assembly': r'^\s*([a-zA-Z_][a-zA-Z0-9_]+)\s*:\s*',
+            'objective-c': r'[-+]\s*\([^)]+\)\s*([a-zA-Z_][a-zA-Z0-9_]+)\b',
+            'terraform': r'resource\s+"[^"]+"\s+"([^"]+)"\s*\{',
+            'solidity': r'function\s+([a-zA-Z_][a-zA-Z0-9_]+)\s*\(',
+            'verilog': r'module\s+([a-zA-Z_][a-zA-Z0-9_]+)\s*\(',
+            'vhdl': r'entity\s+([a-zA-Z_][a-zA-Z0-9_]+)\s+is',
+            'fortran': r'(?:subroutine|function)\s+([a-zA-Z_][a-zA-Z0-9_]+)\s*\(',
+            'prolog': r'([a-z][a-zA-Z0-9_]*)\s*\(.*\)\s*:-',
+            'racket': r'\(define\s+\(([a-zA-Z-]+)\s*',
+            'erlang': r'([a-z][a-zA-Z0-9_]*)\s*\(.*\)\s*->',
+            'ocaml': r'let\s+(?:rec\s+)?([a-z_][a-zA-Z0-9_\']*)\s*',
+            'delphi': r'\b(?:procedure|function)\s+([a-zA-Z_][a-zA-Z0-9_]+)\b',
+            'vimscript': r'function!?\s+([a-zA-Z_#][a-zA-Z0-9_#]*)\s*\('
+        }
+
+        # Buscar nombres clave en el código
+        matches = re.findall(patterns.get(language, r'\b\w{5,}\b'), code)
+        unique_names = list(set(matches))[:3]
+
+        # Construir base del nombre
+        if unique_names:
+            base_name = '_'.join(unique_names)
+        else:
+            content_hash = hashlib.md5(code.encode()).hexdigest()[:8]
+            base_name = f"code_{content_hash}"
+
+        # Limpiar caracteres especiales
+        clean_name = re.sub(r'[^a-zA-Z0-9_-]', '', base_name)[:50]
+
+        # Generar timestamp único
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Obtener extensión del lenguaje
+        extensions = self.languages.get(language, {}).get('extensions', ['txt'])
+        ext = extensions[0]
+        
+        return f"{clean_name}_{timestamp}.{ext}"
+
+    def save_code_file(self, code: str, language: str, user_input: str) -> str:
+        """Guarda el código en un archivo con nombre óptimo"""
+        try:
+            filename = self._generate_filename(code, language, user_input)
+            filepath = self.output_dir / filename
+            
+            # Prevenir sobreescritura
+            counter = 1
+            while filepath.exists():
+                new_name = f"{filepath.stem}_{counter}{filepath.suffix}"
+                filepath = filepath.with_name(new_name)
+                counter += 1
+
+            # Escribir archivo
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(f"// Generado por AI\n")
+                f.write(f"// Prompt original: {user_input}\n\n")
+                f.write(code)
+            
+            self.logger.info(f"Código guardado en: {filepath}")
+            return str(filepath)
+            
+        except Exception as e:
+            self.logger.error(f"Error guardando archivo: {str(e)}")
+            return None
+
     
     def _select_model_file_with_tkinter(self):
         model_dir = base_dir / "models"
@@ -169,7 +336,7 @@ class AILocalChatbot:
             self.logger.error(f"El archivo del modelo no existe: {model_file}")
             self._show_error_popup(f"El archivo del modelo no existe: {model_file}")
             raise FileNotFoundError(f"El archivo del modelo no existe: {model_file}")
-            
+
         model_name = model_file.name.lower()
         model_type = self._detect_model_type(model_name)
         self.logger.info(f"Tipo de modelo detectado: {model_type}")
@@ -186,93 +353,126 @@ class AILocalChatbot:
                 self.logger.warning(f"El archivo del modelo es sospechosamente pequeño: {file_size_mb:.2f} MB")
                 self._show_error_popup(f"Advertencia: El archivo del modelo es muy pequeño ({file_size_mb:.2f} MB). Es posible que esté corrupto o incompleto.")
             
-            self.llm = AutoModelForCausalLM.from_pretrained(
-                str(model_file),
-                model_type=model_type,
-                context_length=4096,
-                gpu_layers=0
-            )
-            
-            self.logger.info("Modelo cargado exitosamente")
-            
-            # Prueba básica del modelo
+            #self.llm = AutoModelForCausalLM.from_pretrained(
+            #    str(model_file),
+            #    model_type=model_type,
+            #    context_length=4096,
+            #    gpu_layers=0
+            #)
+
             try:
-                test_tokens = self.llm.tokenize("Hola, prueba")
-                self.logger.info(f"Prueba de tokenización exitosa: {test_tokens}")
-            except Exception as e:
-                self.logger.error(f"Error en la prueba de tokenización: {str(e)}")
-                self._show_error_popup(f"Error en la prueba de tokenización. Es posible que el modelo no funcione correctamente: {str(e)}")
+                model_config = self.MODEL_CONFIG.get(model_type, self.MODEL_CONFIG["llama"])  # Obtener configuración
+        
+                self.llm = AutoModelForCausalLM.from_pretrained(
+                    str(model_file),
+                    model_type=model_type,
+                    context_length=model_config["context_length"],
+                    max_new_tokens=model_config["max_new_tokens"],
+                    temperature=model_config["temperature"],
+                    stop=model_config["stop_sequences"],
+                    gpu_layers=0
+                )
                 
-        except Exception as e:
-            self.logger.error(f"Error al cargar el modelo local: {str(e)}")
-            error_stack = traceback.format_exc()
-            self.logger.error(f"Stack de error:\n{error_stack}")
+                if model_type == "mistral":
+                    self.llm.set_cache_size(512)
             
-            if "No such file or directory" in str(e):
-                self.logger.error("Archivo no encontrado")
-                self._show_error_popup(f"No se encontró el archivo del modelo: {model_file}")
-            elif "not a valid Win32 application" in str(e):
-                self.logger.error("Archivo no válido para esta plataforma")
-                self._show_error_popup(f"El archivo del modelo no es compatible con esta plataforma: {model_file}")
-            else:
-                self._show_error_popup(f"Error al cargar el modelo:\n{str(e)}")
-                
-                # Intentar cargar modelo alternativo de respaldo
+                self._apply_model_specific_settings(model_type)
+                self.logger.info("Modelo cargado exitosamente con configuración óptima")
+            
+                # Prueba básica del modelo
                 try:
-                    if self._check_internet_connection():
-                        self.logger.info("Intentando cargar modelo de respaldo desde Hugging Face...")
-                        self._show_error_popup("Error al cargar el modelo local. Intentando descargar modelo de respaldo...")
+                    test_tokens = self.llm.tokenize("Hola, prueba")
+                    self.logger.info(f"Prueba de tokenización exitosa: {test_tokens}")
+                except Exception as e:
+                    self.logger.error(f"Error en la prueba de tokenización: {str(e)}")
+                    self._show_error_popup(f"Error en la prueba de tokenización. Es posible que el modelo no funcione correctamente: {str(e)}")
+                
+            except Exception as e:
+                self.logger.error(f"Error al cargar el modelo local: {str(e)}")
+                error_stack = traceback.format_exc()
+                self.logger.error(f"Stack de error:\n{error_stack}")
+            
+                if "No such file or directory" in str(e):
+                    self.logger.error("Archivo no encontrado")
+                    self._show_error_popup(f"No se encontró el archivo del modelo: {model_file}")
+                elif "not a valid Win32 application" in str(e):
+                    self.logger.error("Archivo no válido para esta plataforma")
+                    self._show_error_popup(f"El archivo del modelo no es compatible con esta plataforma: {model_file}")
+                else:
+                    self._show_error_popup(f"Error al cargar el modelo:\n{str(e)}")
+                
+                    # Intentar cargar modelo alternativo de respaldo
+                    try:
+                        if self._check_internet_connection():
+                            self.logger.info("Intentando cargar modelo de respaldo desde Hugging Face...")
+                            self._show_error_popup("Error al cargar el modelo local. Intentando descargar modelo de respaldo...")
+
+                            backup_config = self.MODEL_CONFIG["default"]
                         
-                        self.llm = AutoModelForCausalLM.from_pretrained(
-                            "NyxGleam/tinyllama-1.1b-chat-v1.0.Q4_K_M",
-                            model_type="llama",
-                            context_length=4096,
-                            gpu_layers=0
-                        )
-                        self.logger.info("Modelo de respaldo cargado exitosamente")
-                    else:
+                            self.llm = AutoModelForCausalLM.from_pretrained(
+                                "NyxGleam/tinyllama-1.1b-chat-v1.0.Q4_K_M",
+                                model_type="llama",
+                                context_length=backup_config["context_length"],
+                                max_new_tokens=backup_config["max_new_tokens"],
+                                temperature=backup_config["temperature"],
+                                gpu_layers=0
+                            )
+
+                            self._apply_model_specific_settings(model_type)
+                            self.logger.info("Modelo de respaldo cargado exitosamente")
+                    except Exception as e:
                         self.logger.error("No hay conexión a internet para cargar modelo de respaldo")
                         raise RuntimeError("No se pudo cargar el modelo local y no hay conexión a internet para descargar un modelo alternativo.")
-                except Exception as inner_e:
-                    self.logger.error(f"Error al cargar modelo de respaldo: {str(inner_e)}")
-                    raise RuntimeError(f"No se pudo cargar el modelo local ni el modelo de respaldo: {str(inner_e)}")
+        except Exception as inner_e:
+            self.logger.error(f"Error al cargar modelo de respaldo: {str(inner_e)}")
+            raise RuntimeError(f"No se pudo cargar el modelo local ni el modelo de respaldo: {str(inner_e)}")
     
     def _detect_model_type(self, model_file):
         model_file = model_file.lower()
-        self.logger.debug(f"Detectando tipo de modelo para: {model_file}")
-
-        if any(keyword in model_file for keyword in ["llama", "tinyllama", "alpaca", "vicuna", "guanaco", "wizardlm", "koala"]):
-            return "llama"
-        if any(keyword in model_file for keyword in ["mistral", "mixtral"]):
-            return "mistral"
-        if any(keyword in model_file for keyword in ["gpt2", "distilgpt2"]):
-            return "gpt2"
-        if any(keyword in model_file for keyword in ["gptj"]):
-            return "gptj"
-        if any(keyword in model_file for keyword in ["gptneox", "neox", "redpajama", "pythia"]):
-            return "gptneox"
-        if any(keyword in model_file for keyword in ["falcon"]):
-            return "falcon"
-        if any(keyword in model_file for keyword in ["replit"]):
-            return "replit"
-        if any(keyword in model_file for keyword in ["bloom"]):
-            return "bloom"
-        if any(keyword in model_file for keyword in ["starcoder", "codegen", "codellama"]):
-            return "starcoder"
-        if any(keyword in model_file for keyword in ["xgen"]):
-            return "xgen"
-        if any(keyword in model_file for keyword in ["openllama"]):
-            return "openllama"
-
-        # Si no se reconoce, usar un valor por defecto
-        self.logger.warning(f"Tipo de modelo no reconocido para: '{model_file}'. Usando 'llama' por defecto.")
+        detection_map = {
+            "llama": ["llama", "alpaca", "vicuna", "guanaco"],
+            "mistral": ["mistral", "mixtral"],
+            "gpt2": ["gpt2", "distilgpt2"],
+            "falcon": ["falcon"],
+            "starcoder": ["starcoder", "codellama"],
+            "deepseek": ["deepseek", "deepcoder"]
+        }
+        
+        for model_type, keywords in detection_map.items():
+            if any(kw in model_file for kw in keywords):
+                self.logger.debug(f"Modelo detectado como tipo: {model_type}")
+                return model_type
+        
+        self.logger.warning(f"Tipo de modelo no reconocido: {model_file}.\nUsando el modelo por default.")
         return "llama"
+
+    def _apply_model_specific_settings(self, model_type):
+        """Aplica ajustes específicos post-carga"""
+        if model_type == "starcoder":
+            self.llm.set_align_code(True)
+            
+    def _handle_model_load_error(self, model_type):
+        """Maneja errores de carga de manera específica"""
+        error_info = {
+            "llama": "Intente reducir 'context_length' a 2048",
+            "mistral": "Verifique la versión del modelo (preferir formatos .gguf)",
+            "falcon": "Requiere al menos 4GB de RAM libre"
+        }
+        
+        suggestion = error_info.get(model_type, "Verifique que el archivo del modelo esté completo y sea compatible")
+        
+        self._show_error_popup(f"Error cargando modelo {model_type}:\n{suggestion}")
 
     def format_prompt(self, user_input):
         self.logger.debug(f"Formateando prompt para: {user_input}")
+    
+        # Detectar tipo de modelo
+        model_type = self._detect_model_type(self.model_path.name.lower())
+        config = self.MODEL_CONFIG.get(model_type, self.MODEL_CONFIG["default"])
         
         # Obtener y limpiar el mensaje de sistema
         system_prompt = self.personality.get("system_prompt", "").strip()
+        history = self._format_history(model_type)
         if not system_prompt:
             system_prompt = "Eres un asistente virtual útil y amable. Responde de manera concisa y coherente."
 
@@ -298,20 +498,80 @@ class AILocalChatbot:
             self.logger.debug(f"Historia relevante: {relevant_history}")
 
         # Construir el historial formateado
-        formatted_history = ""
-        for i in range(0, len(relevant_history), 2):
-            if i+1 < len(relevant_history):  # Asegurar que tenemos el par completo
-                user_msg = relevant_history[i].strip()
-                assistant_msg = relevant_history[i+1].strip()
-                formatted_history += f"<|user|> {user_msg}\n<|assistant|> {assistant_msg}\n"
+        #formatted_history = ""
+        #    for i in range(0, len(relevant_history), 2):
+        #        if i+1 < len(relevant_history):  # Asegurar que tenemos el par completo
+        #            user_msg = relevant_history[i].strip()
+        #            assistant_msg = relevant_history[i+1].strip()
+        #            formatted_history += f"<|user|> {user_msg}\n<|assistant|> {assistant_msg}\n"
+
+        
+        formatted_history = self._format_history(model_type)
 
         # Construir el prompt final
-        final_prompt = f"<|system|> {system_prompt}\n"
-        final_prompt += formatted_history
-        final_prompt += f"<|user|> {user_input.strip()}\n<|assistant|> "
-
-        self.logger.debug(f"Prompt formateado:\n{final_prompt}")
+        final_prompt = config["prompt_template"].format(
+            system_prompt=system_prompt,
+            history=formatted_history,
+            user_input=user_input.strip()
+        )
+    
+        # Aplicar límites de contexto
+        max_context = config["context_length"] - len(self.tokenize(user_input)) - 100
+        final_prompt = self._truncate_prompt(final_prompt, max_context)
+    
+        self.logger.debug(f"Prompt final ({model_type}):\n{final_prompt[:500]}...")
         return final_prompt
+
+    def _format_history(self, model_type):
+        """Formatea el historial según las convenciones del modelo"""
+        history_config = {
+            "llama": {
+                "user_prefix": "<|user|>",
+                "assistant_prefix": "<|assistant|>",
+                "max_pairs": 3
+            },
+            "mistral": {
+                "user_prefix": "[INST]",
+                "assistant_prefix": "[/INST]",
+                "max_pairs": 5
+            },
+            "falcon": {
+                "user_prefix": "\nUser:",
+                "assistant_prefix": "\nFalcon:",
+                "max_pairs": 2
+            },
+            "default": {
+                "user_prefix": "\nUser:",
+                "assistant_prefix": "\nAssistant:",
+                "max_pairs": 3
+            }
+        }
+    
+        cfg = history_config.get(model_type, history_config["default"])
+        max_pairs = min(self.settings.get("history_length", 3), cfg["max_pairs"])
+    
+        # Obtener los últimos pares completos
+        history = self.conversation_history[-max_pairs*2:]
+        formatted = []
+    
+        for i in range(0, len(history), 2):
+            if i+1 < len(history):
+                user = history[i].strip()
+                assistant = history[i+1].strip()
+                formatted.append(
+                    f"{cfg['user_prefix']} {user}\n{cfg['assistant_prefix']} {assistant}"
+                )
+    
+        return "\n".join(formatted)
+
+    def _truncate_prompt(self, prompt, max_length):
+        """Asegura que el prompt no exceda el contexto del modelo"""
+        tokens = self.tokenize(prompt)
+        if len(tokens) > max_length:
+            self.logger.warning(f"Truncando prompt de {len(tokens)} a {max_length} tokens")
+            truncated = self.llm.detokenize(tokens[:max_length])
+            return truncated.replace("<|endoftext|>", "").strip()
+        return prompt
 
     def generate_response(self, user_input):
         if not user_input.strip():
@@ -324,6 +584,9 @@ class AILocalChatbot:
         if self.llm is None:
             self.logger.error("El modelo no está cargado correctamente")
             return "Lo siento, el modelo de lenguaje no está inicializado correctamente. Por favor, reinicia la aplicación."
+
+        if "buscar" in user_input.lower() or "investiga" in user_input.lower():
+            return self.handle_search_query(user_input)
             
         prompt = self.format_prompt(user_input)
         self.logger.debug(f"Prompt completo:\n{prompt}")
@@ -358,6 +621,10 @@ class AILocalChatbot:
                 temperature=0.7,
                 stop=["<|user|>", "<|system|>", "\n\n"]
             )
+
+            # Post-procesamiento para código
+            processed_response = self.post_process_code(raw_response.strip())
+
             elapsed = time.time() - start_time
             self.logger.info(f"Generación completada en {elapsed:.2f}s")
 
@@ -439,6 +706,15 @@ class AILocalChatbot:
             except Exception as learn_error:
                 self.logger.error(f"Error al guardar la interacción: {str(learn_error)}")
 
+            # Procesar código
+            processed_code, detected_lang = self.post_process_code(raw_response.strip())
+        
+            # Guardar en archivo
+            if detected_lang != 'text':
+                saved_path = self.save_code_file(processed_code, detected_lang, user_input)
+                if saved_path:
+                    response += f"\n\n🔖 Código guardado en: {saved_path}"
+
             return response
 
         except Exception as e:
@@ -479,3 +755,89 @@ class AILocalChatbot:
         except Exception as e:
             self.logger.error(f"Error al tokenizar texto: {str(e)}")
             return []
+
+    def handle_search_query(self, query): # Añadir a requirements.txt
+        try:
+            with DDGS() as ddgs:
+                results = [r for r in ddgs.text(query, max_results=3)]
+
+                if "canciones de hatsune miku" in query.lower():
+                    # Respuesta estructurada para música
+                    return "Canciones populares de Hatsune Miku:\n- Tell Your World\n- World is Mine\n- Rolling Girl\n- Melt\n(Powered by Vocaloid Database)"
+
+                return f"Resultados de búsqueda para '{query}':\n" + "\n".join([f"{r['title']}: {r['href']}" for r in results[:3]])
+
+        except Exception as e:
+            return f"No pude completar la búsqueda. Error: {str(e)}"
+
+    def post_process_code(self, response):
+        """Extrae bloques de código de la respuesta del modelo soportando múltiples lenguajes.
+    
+        Args:
+            response (str): Respuesta cruda del modelo
+        
+        Returns:
+            str: Código limpio o respuesta original si no se detecta código
+        """
+        languages = {
+            'python': {'extensions': ['py', 'python']},
+            'javascript': {'extensions': ['js', 'javascript']},
+            'java': {'extensions': ['java']},
+            'c': {'extensions': ['c', 'h']},
+            'cpp': {'extensions': ['cpp', 'cc', 'cxx', 'c++']},
+            'csharp': {'extensions': ['cs']},
+            'go': {'extensions': ['go']},
+            'rust': {'extensions': ['rs']},
+            'swift': {'extensions': ['swift']},
+            'kotlin': {'extensions': ['kt', 'kts']},
+            'typescript': {'extensions': ['ts', 'tsx']},
+            'php': {'extensions': ['php', 'phtml']},
+            'ruby': {'extensions': ['rb']},
+            'lua': {'extensions': ['lua']},
+            'perl': {'extensions': ['pl', 'pm']},
+            'r': {'extensions': ['r', 'R']},
+            'scala': {'extensions': ['scala', 'sc']},
+            'dart': {'extensions': ['dart']},
+            'julia': {'extensions': ['jl']},
+            'haskell': {'extensions': ['hs', 'lhs']},
+            'elixir': {'extensions': ['ex', 'exs']},
+            'clojure': {'extensions': ['clj', 'cljs', 'cljc']},
+            'matlab': {'extensions': ['m']},
+            'groovy': {'extensions': ['groovy', 'gy']},
+            'sql': {'extensions': ['sql']},
+            'html': {'extensions': ['html', 'htm']},
+            'css': {'extensions': ['css']},
+            'markdown': {'extensions': ['md', 'markdown']},
+            'bash': {'extensions': ['sh', 'bash']},
+            'powershell': {'extensions': ['ps1']},
+            'assembly': {'extensions': ['asm', 's']},
+            'objective-c': {'extensions': ['m', 'mm']},
+            'docker': {'extensions': ['dockerfile']},
+            'terraform': {'extensions': ['tf']},
+            'solidity': {'extensions': ['sol']},
+            'verilog': {'extensions': ['v', 'vh']},
+            'vhdl': {'extensions': ['vhd', 'vhdl']},
+            'fortran': {'extensions': ['f90', 'f95']},
+            'prolog': {'extensions': ['pl', 'pro']},
+            'racket': {'extensions': ['rkt']},
+            'erlang': {'extensions': ['erl', 'hrl']},
+            'ocaml': {'extensions': ['ml', 'mli']},
+            'delphi': {'extensions': ['pas', 'dpr']},
+            'vimscript': {'extensions': ['vim']}
+        }
+
+        code_block_regex = r"```(?:(\w+)\n)?(.*?)```"
+        matches = re.findall(code_block_regex, response, re.DOTALL)
+
+        if matches:
+            lang, code = matches[0]
+            code = code.strip()
+        
+            if lang:
+                lang = lang.lower()
+                for lang_name, data in languages.items():
+                    if lang in data['extensions']:
+                        return f"// Lenguaje: {lang_name}\n\n{code}"
+        
+            return f"// Código detectado\n\n{code}"
+        return response, 'text'

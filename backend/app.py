@@ -4,6 +4,7 @@ from flask_cors import CORS
 from chatbot_core import AILocalChatbot
 import logging
 import os
+import pathlib
 
 # Configuración única de Flask y CORS
 app = Flask(__name__)
@@ -19,7 +20,9 @@ CORS(
 logging.basicConfig(level=logging.DEBUG)
 
 # Cargar modelo (verifica la ruta absoluta)
-MODEL_PATH = "models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+BASE_DIR = pathlib.Path(__file__).parent.parent
+MODEL_PATH = BASE_DIR / "models" / "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+
 chatbot = AILocalChatbot(MODEL_PATH)
 
 @app.route('/api/chat', methods=['POST', 'OPTIONS'])

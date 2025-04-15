@@ -18,3 +18,6 @@ python-dotenv
 Flask
 ctransformers
 gunicorn
+duckduckgo_search
+hashlib
+datetime
