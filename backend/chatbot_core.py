@@ -97,7 +97,7 @@ class AILocalChatbot:
             if self._check_internet_connection():
                 print("[INFO] Internet connection available. Loading model from Hugging Face...")
                 self.llm = AutoModelForCausalLM.from_pretrained(
-                    "NyxGleam/mistral-7b-instruct-v0.1.Q4_K_M",
+                    "NyxGleam/tinyllama-1.1b-chat-v1.0.Q4_K_M",
                     model_type=model_type,
                     context_length=2048,
                     gpu_layers=0
@@ -113,7 +113,7 @@ class AILocalChatbot:
     def _detect_model_type(self, model_file):
         model_file = model_file.lower()
 
-        if any(keyword in model_file for keyword in ["llama", "alpaca", "vicuna", "guanaco", "wizardlm", "koala"]):
+        if any(keyword in model_file for keyword in ["llama", "tinyllama", "alpaca", "vicuna", "guanaco", "wizardlm", "koala"]):
             return "llama"
         if any(keyword in model_file for keyword in ["mistral", "mixtral"]):
             return "mistral"
@@ -151,9 +151,9 @@ class AILocalChatbot:
 
     def generate_response(self, user_input):
         prompt = self.format_prompt(user_input)
-        
+
         print(f"[DEBUG] Generando respuesta para: {prompt[:50]}...")  # 👈 Log de inicio
-        
+
         try:
             # Generar respuesta con tiempo máximo
             start_time = time.time()
@@ -163,18 +163,18 @@ class AILocalChatbot:
                 temperature=0.7
             )
             elapsed = time.time() - start_time
-            
+
             print(f"[DEBUG] Respuesta generada en {elapsed:.2f}s: {response[:100]}...")  # 👈 Log de éxito
-            
+
             # Guardar en el historial
             self.conversation_history.append(user_input)
             self.conversation_history.append(response.strip())
-            
+
             # Aprendizaje continuo
             self.learning_system.save_interaction(user_input, response.strip())
-            
+
             return response.strip()
-        
+
         except Exception as e:
             print(f"[ERROR] Fallo en generación: {str(e)}")  # 👈 Log de error
             return "Lo siento, hubo un error interno."

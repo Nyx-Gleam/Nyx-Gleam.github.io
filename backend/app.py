@@ -18,7 +18,7 @@ CORS(
 logging.basicConfig(level=logging.DEBUG)
 
 # Cargar modelo (verifica la ruta absoluta)
-MODEL_PATH = "models/mistral-7b-instruct-v0.1.Q4_K_M.gguf"
+MODEL_PATH = "models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
 chatbot = AILocalChatbot(MODEL_PATH)
 
 @app.route('/api/chat', methods=['POST', 'OPTIONS'])

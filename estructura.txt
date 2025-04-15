@@ -53,4 +53,170 @@ def handle_chat():
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
 
-    curl -X POST http://127.0.0.1:5000/api/chat -H "Content-Type: application/json" -d "{\"message\": \"Hola, ¿qué puedes hacer?\", \"history\": []}"
+
+curl -X POST http://127.0.0.1:5000/api/chat -H "Content-Type: application/json" -d "{\"message\": \"Hola, ¿qué puedes hacer?\", \"history\": []}"
+
+
+import sys
+import os
+from pathlib import Path
+
+# Obtener la carpeta raíz del proyecto: asumiendo que este archivo está en backend/
+base_dir = Path(__file__).resolve().parent.parent
+# Agregar la raíz del proyecto al sys.path
+sys.path.insert(0, str(base_dir))
+
+import json
+import time
+from continuous_learning import ContinuousLearningSystem
+from ctransformers import AutoModelForCausalLM
+
+class AILocalChatbot:
+    def __init__(self, model_path, config_dir="config", data_dir="data"):
+        self.model_path = model_path
+        
+        # Usar la carpeta raíz del proyecto para obtener las rutas de configuración y datos
+        self.config_dir = base_dir / config_dir
+        self.data_dir = base_dir / data_dir
+        
+        self.conversation_history = []
+        
+        # Cargar configuraciones
+        self.personality = self._load_config("personality.json")
+        self.settings = self._load_config("settings.json")
+        
+        # Inicializar subsistemas
+        self.learning_system = ContinuousLearningSystem(
+            data_dir=self.data_dir,
+            config_dir=self.config_dir
+        )
+        
+        # Cargar modelo
+        self._load_model()
+        
+    def _load_config(self, filename):
+        config_path = self.config_dir / filename
+        with open(config_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    
+    def _load_model(self):
+        model_file = Path(self.model_path).name.lower()
+        model_type = self._detect_model_type(model_file)
+        
+        self.llm = AutoModelForCausalLM.from_pretrained(
+            self.model_path,
+            model_type=model_type,
+            context_length=2048,
+            gpu_layers=0
+        )
+    
+    def _detect_model_type(self, model_file):
+        # Lógica de detección de tipo de modelo
+        if "llama" in model_file: return "llama"
+        if "mistral" in model_file: return "mistral"
+        if "gpt2" in model_file: return "gpt2"
+        return "llama"
+
+    def format_prompt(self, user_input):
+        system_prompt = self.personality.get("system_prompt", "")
+        history_formatted = ""
+        for i, message in enumerate(self.conversation_history[-self.settings.get("history_length", 5):]):
+            role = "User" if i % 2 == 0 else "Assistant"
+            history_formatted += f"{role}: {message}\n"
+        full_prompt = f"{system_prompt}\n{history_formatted}User: {user_input}\nAssistant:"
+        return full_prompt
+
+    def generate_response(self, user_input):
+        prompt = self.format_prompt(user_input)
+
+        response = ""
+        for token in self.llm(prompt, stream=True):
+            response += token
+
+        # Guardar en el historial
+        self.conversation_history.append(user_input)
+        self.conversation_history.append(response.strip())
+
+        # Aprendizaje continuo
+        self.learning_system.save_interaction(user_input, response.strip())
+
+        return response.strip()
+
+    def reset_history(self):
+        self.conversation_history = []
+
+
+frontend/app.js
+async function sendMessage() {
+    const input = document.getElementById('user-input');
+    const userMessage = input.value.trim();
+    
+    if (!userMessage) return;
+
+    // Mostrar mensaje del usuario
+    appendMessage('user', userMessage);
+    input.value = '';
+
+    try {
+        const response = await fetch('https://ai-chatbot-backend-a0x5.onrender.com/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: userMessage })
+        });
+        
+        const data = await response.json();
+        appendMessage('bot', data.response);
+
+    } catch (error) {
+        appendMessage('bot', "❌ Error al conectar con el servidor");
+    }
+}
+
+function appendMessage(sender, text) {
+    const chatHistory = document.getElementById('chat-history');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = message ${sender};
+    messageDiv.textContent = text;
+    chatHistory.appendChild(messageDiv);
+    chatHistory.scrollTop = chatHistory.scrollHeight; // Auto-scroll
+}
+
+frontend/index.html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chatbot IA</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="chat-container">
+        <div id="chat-history"></div>
+        <div class="input-area">
+            <input type="text" id="user-input" placeholder="Escribe tu mensaje...">
+            <button onclick="sendMessage()">Enviar</button>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
+
+
+
+
+
+
+    def generate_response(self, user_input):
+        prompt = self.format_prompt(user_input)
+
+        response = ""
+        for token in self.llm.generate(prompt, stream=True):
+            response += token
+
+        # Guardar en el historial
+        self.conversation_history.append(user_input)
+        self.conversation_history.append(response.strip())
+
+        # Aprendizaje continuo
+        self.learning_system.save_interaction(user_input, response.strip())
+
+        return response.strip()
