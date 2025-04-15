@@ -153,7 +153,7 @@ class AILocalChatbot:
         prompt = self.format_prompt(user_input)
 
         response = ""
-        for token in self.llm(prompt, stream=True):
+        for token in self.llm.generate(prompt, stream=True):
             response += token
 
         # Guardar en el historial
@@ -167,3 +167,12 @@ class AILocalChatbot:
 
     def reset_history(self):
         self.conversation_history = []
+
+    def __call__(self, prompt, stream=False, **kwargs):
+        return self.llm.generate(prompt, stream=stream, **kwargs)
+
+    def generate(self, prompt, **kwargs):
+        return self.llm.generate(prompt, **kwargs)
+
+    def tokenize(self, text):
+        return self.llm.tokenize(text)
