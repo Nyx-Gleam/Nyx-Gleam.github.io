@@ -151,18 +151,33 @@ class AILocalChatbot:
 
     def generate_response(self, user_input):
         prompt = self.format_prompt(user_input)
-
-        # Generar respuesta completa (sin streaming)
-        response = self.llm(prompt)  # 👈 Usa __call__ en lugar de generate
-
-        # Guardar en el historial
-        self.conversation_history.append(user_input)
-        self.conversation_history.append(response.strip())
-
-        # Aprendizaje continuo
-        self.learning_system.save_interaction(user_input, response.strip())
-
-        return response.strip()
+        
+        print(f"[DEBUG] Generando respuesta para: {prompt[:50]}...")  # 👈 Log de inicio
+        
+        try:
+            # Generar respuesta con tiempo máximo
+            start_time = time.time()
+            response = self.llm(
+                prompt,
+                max_new_tokens=150,  # Limitar longitud
+                temperature=0.7
+            )
+            elapsed = time.time() - start_time
+            
+            print(f"[DEBUG] Respuesta generada en {elapsed:.2f}s: {response[:100]}...")  # 👈 Log de éxito
+            
+            # Guardar en el historial
+            self.conversation_history.append(user_input)
+            self.conversation_history.append(response.strip())
+            
+            # Aprendizaje continuo
+            self.learning_system.save_interaction(user_input, response.strip())
+            
+            return response.strip()
+        
+        except Exception as e:
+            print(f"[ERROR] Fallo en generación: {str(e)}")  # 👈 Log de error
+            return "Lo siento, hubo un error interno."
 
     def reset_history(self):
         self.conversation_history = []
