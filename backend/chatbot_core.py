@@ -152,9 +152,8 @@ class AILocalChatbot:
     def generate_response(self, user_input):
         prompt = self.format_prompt(user_input)
 
-        response = ""
-        for token in self.llm.generate(prompt, stream=True):
-            response += token
+        # Generar respuesta completa (sin streaming)
+        response = self.llm(prompt)  # 👈 Usa __call__ en lugar de generate
 
         # Guardar en el historial
         self.conversation_history.append(user_input)
