@@ -4,10 +4,15 @@ import json
 import time
 import socket
 import logging
-from pathlib import Path
 import traceback
 import re
 import hashlib
+import random
+import requests
+
+import tkinter as tk
+
+from pathlib import Path
 
 base_dir = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(base_dir))
@@ -17,14 +22,16 @@ from ctransformers import AutoModelForCausalLM
 from tkinter import Tk, messagebox, simpledialog
 from duckduckgo_search import DDGS
 from datetime import datetime
+from PIL import Image, ImageTk
+from tkinter import ttk
 
 class AILocalChatbot:
-    def __init__(self, model_path, config_dir="config", data_dir="data"):
+    def __init__(self, model_path=None, config_dir="config", data_dir="data"):
         self.MODEL_CONFIG = {
             "llama": {
                 "context_length": 4096,
                 "temperature": 0.7,
-                "max_new_tokens": 256,
+                "max_new_tokens": 512,
                 "prompt_template": "<|system|>\n{system_prompt}</s>\n<|user|>\n{user_input}</s>\n<|assistant|>",
                 "stop_sequences": ["</s>", "<|"],
                 "recommended_models": ["Llama-2", "Alpaca", "Vicuna"]
@@ -40,27 +47,27 @@ class AILocalChatbot:
             "gpt2": {
                 "context_length": 1024,
                 "temperature": 0.9,
-                "max_new_tokens": 128,
+                "max_new_tokens": 256,
                 "prompt_template": "{system_prompt}\n\nUsuario: {user_input}\nAsistente:",
                 "stop_sequences": ["\n"]
             },
             "falcon": {
                 "context_length": 2048,
                 "temperature": 0.5,
-                "max_new_tokens": 200,
+                "max_new_tokens": 400,
                 "prompt_template": "System: {system_prompt}\nUser: {user_input}\nFalcon:",
                 "stop_sequences": ["\nUser:"]
             },
             "starcoder": {
                 "context_length": 4096,
                 "temperature": 0.3,
-                "max_new_tokens": 256,
+                "max_new_tokens": 512,
                 "prompt_template": "// System: {system_prompt}\n// User: {user_input}\n// Assistant:",
                 "code_completion": True
             },
             "deepseek": {
                 "context_length": 4096,
-                "max_new_tokens": 1024,
+                "max_new_tokens": 2048,
                 "temperature": 0.2,
                 "prompt_template": (
                     "### System:\n{system_prompt}\n\n"
@@ -71,7 +78,18 @@ class AILocalChatbot:
                 "stop_sequences": ["###"],
                 "code_specialist": True
             },
-            
+            "deepseek-code": {
+                    "context_length": 4096,
+                    "max_new_tokens": 1024,
+                    "temperature": 0.2,
+                    "prompt_template": (
+                        "### System:\n{system_prompt}\n\n"
+                        "### User:\n{user_input}\n\n"
+                        "### Assistant:\n"
+                    ),
+                    "stop_sequences": ["###"],
+                    "code_specialist": True
+            },
             "default": {
                 "context_length": 2048,
                 "max_new_tokens": 256,
@@ -88,38 +106,32 @@ class AILocalChatbot:
                 logging.StreamHandler()
             ]
         )
-        
+
         self.logger = logging.getLogger("AILocalChatbot")
         self.logger.info("Iniciando chatbot...")
-        
-        self.model_path = model_path
-        self.llm = None  # Inicializar el modelo como None para verificar más tarde
 
-        # Si no se pasa modelo, buscar en carpeta `models/`
-        if not self.model_path:
-            self.model_path = self._select_model_file_with_tkinter()
+        # Inicializar modelo_path como None
+        self.model_path = None
 
-        self.logger.info(f"Modelo seleccionado: {self.model_path}")
-        
         # Verificar que los directorios existen, crearlos si no
         self.config_dir = base_dir / config_dir
         self.data_dir = base_dir / data_dir
-        
+
         for directory in [self.config_dir, self.data_dir]:
             if not directory.exists():
                 self.logger.warning(f"El directorio {directory} no existe. Creándolo...")
                 directory.mkdir(parents=True, exist_ok=True)
-        
+
         self.conversation_history = []
 
-        # Cargar configuraciones con manejo de errores
+        # Cargar configuraciones
         try:
             self.personality = self._load_config("personality.json")
             self.logger.info("Configuración de personalidad cargada correctamente")
         except Exception as e:
             self.logger.error(f"Error al cargar personality.json: {str(e)}")
             self.personality = {"system_prompt": "Eres un asistente virtual útil y amable. Responde de manera concisa y coherente."}
-        
+
         try:
             self.settings = self._load_config("settings.json")
             self.logger.info("Configuración de ajustes cargada correctamente")
@@ -137,15 +149,221 @@ class AILocalChatbot:
             self.logger.error(f"Error al inicializar el sistema de aprendizaje: {str(e)}")
             self._show_error_popup(f"No se pudo inicializar el sistema de aprendizaje: {str(e)}")
 
-        self._load_model()
-        
+        # Inicialización del modelo
+        try:
+            # Si se proporcionó un model_path específico, úsalo
+            if model_path:
+                self.model_path = model_path
+                self.logger.info(f"Usando modelo proporcionado: {model_path}")
+            else:
+                # Si no se proporcionó model_path, mostrar selector siempre
+                self.logger.info("Mostrando selector de modelos...")
+                self.model_path = self._select_model_with_fallback()
+
+            # Intentar cargar el modelo seleccionado
+            if self.model_path:
+                self._load_model()
+            else:
+                self.logger.warning("No se pudo seleccionar un modelo local. Intentando cargar modelo de respaldo.")
+                self._handle_initialization_error()
+        except Exception as e:
+            self.logger.error(f"Error al inicializar el modelo: {str(e)}")
+            self._handle_initialization_error()
+
         self.output_dir = Path(__file__).resolve().parent.parent / "output"
         self._init_output_dir()
+
+    def _select_model_with_fallback(self):
+        """Muestra un selector de modelos y retorna el modelo seleccionado o None si no hay modelos"""
+        model_dir = base_dir / "models"
+
+        # Asegurarse de que el directorio existe
+        if not model_dir.exists():
+            try:
+                model_dir.mkdir(parents=True, exist_ok=True)
+                self.logger.info(f"Se ha creado el directorio de modelos: {model_dir}")
+                self._show_error_popup(f"Se ha creado el directorio de modelos: {model_dir}\nPor favor, coloca tus archivos .gguf allí e intenta de nuevo.")
+            except Exception as e:
+                self.logger.error(f"No se pudo crear el directorio de modelos: {str(e)}")
+                self._show_error_popup(f"No se pudo crear el directorio de modelos: {str(e)}")
+            return None
+
+        # Buscar modelos .gguf
+        try:
+            gguf_files = [f for f in os.listdir(model_dir) if f.endswith(".gguf")]
+            self.logger.info(f"Modelos encontrados: {gguf_files}")
+        except Exception as e:
+            self.logger.error(f"Error al buscar modelos: {str(e)}")
+            self._show_error_popup(f"Error al buscar modelos: {str(e)}")
+            return None
+
+        # Si no hay modelos, retornar None
+        if not gguf_files:
+            self.logger.warning("No se encontraron modelos .gguf en la carpeta models")
+            self._show_error_popup("No se encontraron modelos .gguf en la carpeta 'models/'\nPor favor, descarga un modelo en formato .gguf y colócalo en la carpeta 'models/' o se usará un modelo de internet.")
+            return None
+
+        # Mostrar selector de modelos siempre, incluso si solo hay uno
+        try:
+            # Crear ventana
+            root = tk.Tk()
+            root.title("Selección de Modelo")
+
+            # Configurar ventana
+            window_width = 500
+            window_height = 350  # Aumentado un poco para asegurar espacio para botones
+            screen_width = root.winfo_screenwidth()
+            screen_height = root.winfo_screenheight()
+            x_coordinate = (screen_width - window_width) // 2
+            y_coordinate = (screen_height - window_height) // 2
+            root.geometry(f"{window_width}x{window_height}+{x_coordinate}+{y_coordinate}")
+            root.resizable(False, False)
+            root.attributes('-topmost', True)
+
+            # Establecer icono de la ventana y barra de tareas
+            icon_path = self.config_dir / "icon.png"
+            if icon_path.exists():
+                try:
+                    # Cargar el icono para la ventana y barra de tareas
+                    img = Image.open(icon_path)
+
+                    
+                    # Variable para almacenar el resultado
+                    result = [None]
+
+                    # Para la barra de tareas en Windows
+                    temp_ico = self.config_dir / "temp_icon.ico"
+                    img.save(temp_ico, format="ICO")
+                    root.iconbitmap(default=str(temp_ico))
+
+                    # Para sistemas basados en X11/Wayland
+                    icon = ImageTk.PhotoImage(img)
+                    root.iconphoto(True, icon)
+
+                    self.logger.info(f"Iconos de ventana y barra de tareas establecidos desde: {icon_path}")
+                except Exception as e:
+                    self.logger.error(f"Error al cargar los iconos: {str(e)}")
+
+            root.lift()
+            root.focus_force()
+
+            # Función para manejar la selección
+            def on_select():
+                try:
+                    selected = listbox.get(listbox.curselection())
+                    result[0] = selected
+                    root.destroy()
+                except Exception as e:
+                    self.logger.error(f"Error al seleccionar modelo: {str(e)}")
+
+            # Marco principal
+            main_frame = ttk.Frame(root)
+            main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+            # Mostrar título de la aplicación
+            title_label = ttk.Label(main_frame, text="NOMBRE POR ELEGIR", font=("Arial", 18, "bold"))
+            title_label.pack(pady=(0, 15))
+
+            # Etiqueta de instrucción
+            label = ttk.Label(main_frame, text="Selecciona un modelo:", font=("Arial", 12))
+            label.pack(pady=(0, 10))
+
+            # Lista de modelos
+            listbox_frame = ttk.Frame(main_frame)
+            listbox_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+
+            scrollbar = ttk.Scrollbar(listbox_frame)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+            listbox = tk.Listbox(listbox_frame, yscrollcommand=scrollbar.set, font=("Arial", 10), height=8)
+            listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            scrollbar.config(command=listbox.yview)
+
+            # Insertar modelos en la lista
+            for model in gguf_files:
+                listbox.insert(tk.END, model)
+
+            # Seleccionar el primer elemento por defecto
+            if gguf_files:
+                listbox.selection_set(0)
+
+            # Frame para botones en la parte inferior
+            button_frame = ttk.Frame(main_frame)
+            button_frame.pack(fill=tk.X, pady=(15, 0))
+
+            # Botones con colores y estilos más visibles
+            select_button = tk.Button(
+                button_frame, 
+                text="Seleccionar", 
+                command=on_select,
+                bg="#4CAF50",  # Verde
+                fg="white",
+                padx=10,
+                pady=5,
+                font=("Arial", 10, "bold")
+            )
+            select_button.pack(side=tk.RIGHT)
+
+            cancel_button = tk.Button(
+                button_frame, 
+                text="Cancelar", 
+                command=root.destroy,
+                bg="#f44336",  # Rojo
+                fg="white",
+                padx=10,
+                pady=5,
+                font=("Arial", 10, "bold")
+            )
+            cancel_button.pack(side=tk.RIGHT, padx=10)
+
+            # Debug - verificar que los botones están empaquetados
+            self.logger.info("Botones creados y empaquetados en la interfaz")
+
+            # Garantizar que la ventana se muestre completamente antes de entrar en el loop
+            root.update_idletasks()
+
+            # Mostrar ventana y esperar
+            root.mainloop()
+
+            # Limpiar archivo temporal de icono si se creó
+            try:
+                if 'temp_ico' in locals() and temp_ico.exists():
+                    os.remove(temp_ico)
+            except:
+                pass
+
+            # Retornar resultado
+            if result[0]:
+                self.logger.info(f"Modelo seleccionado: {result[0]}")
+                return model_dir / result[0]
+            else:
+                self.logger.warning("No se seleccionó ningún modelo")
+                # Si no se seleccionó ninguno pero hay modelos, usar el primero
+                if gguf_files:
+                    self.logger.info(f"Usando el primer modelo disponible: {gguf_files[0]}")
+                    return model_dir / gguf_files[0]
+                return None
+
+        except Exception as e:
+            self.logger.error(f"Error en el selector de modelos: {str(e)}")
+            # En caso de error, intentar usar el primer modelo disponible
+            if gguf_files:
+                self.logger.info(f"Usando el primer modelo disponible debido a un error: {gguf_files[0]}")
+                return model_dir / gguf_files[0]
+            return None
 
     def _init_output_dir(self):
         """Crea el directorio output si no existe"""
         self.output_dir.mkdir(exist_ok=True, parents=True)
         self.logger.info(f"Directorio de salida: {self.output_dir}")
+    
+    def _setup_learning_system(self):
+        """Inicializa el sistema de aprendizaje continuo"""
+        try:
+            return ContinuousLearningSystem()
+        except Exception as e:
+            self.logger.error(f"Error al configurar sistema de aprendizaje: {str(e)}")
+            return None
 
     def _generate_filename(self, code: str, language: str, user_input: str) -> str:
         """Genera nombre de archivo óptimo usando IA"""
@@ -244,41 +462,109 @@ class AILocalChatbot:
 
     
     def _select_model_file_with_tkinter(self):
+        """Selecciona un archivo de modelo usando un diálogo gráfico"""
         model_dir = base_dir / "models"
-        
+
+        # Verificar que el directorio existe
         if not model_dir.exists():
             self.logger.error(f"El directorio de modelos no existe: {model_dir}")
-            self._show_error_popup(f"El directorio de modelos no existe: {model_dir}\nPor favor, crea la carpeta 'models' y coloca tus archivos .gguf allí.")
-            raise FileNotFoundError(f"El directorio de modelos no existe: {model_dir}")
-            
-        gguf_files = [f for f in os.listdir(model_dir) if f.endswith(".gguf")]
+            try:
+                # Crear el directorio de modelos si no existe
+                model_dir.mkdir(parents=True, exist_ok=True)
+                self.logger.info(f"Se ha creado el directorio de modelos: {model_dir}")
+                self._show_error_popup(f"Se ha creado el directorio de modelos: {model_dir}\nPor favor, coloca tus archivos .gguf allí e intenta de nuevo.")
+            except Exception as e:
+                self.logger.error(f"No se pudo crear el directorio de modelos: {str(e)}")
+                self._show_error_popup(f"No se pudo crear el directorio de modelos: {str(e)}")
+            return None
 
+        # Buscar archivos .gguf en el directorio
+        try:
+            gguf_files = [f for f in os.listdir(model_dir) if f.endswith(".gguf")]
+        except Exception as e:
+            self.logger.error(f"Error al listar archivos en el directorio de modelos: {str(e)}")
+            self._show_error_popup(f"Error al listar archivos en el directorio de modelos: {str(e)}")
+            return None
+
+        # Comprobar si hay archivos .gguf
         if not gguf_files:
             self.logger.error("No se encontraron archivos .gguf en la carpeta 'models/'")
             self._show_error_popup("No se encontraron archivos .gguf en la carpeta 'models/'\nPor favor, descarga un modelo en formato .gguf y colócalo en la carpeta 'models/'")
-            raise FileNotFoundError("No .gguf model files found in 'models/' folder.")
+            return None
 
+        # Si solo hay un archivo, usarlo directamente
         elif len(gguf_files) == 1:
             self.logger.info(f"Se encontró un solo modelo: {gguf_files[0]}")
             return model_dir / gguf_files[0]
 
+        # Si hay múltiples archivos, mostrar diálogo de selección
         else:
             self.logger.info(f"Se encontraron múltiples modelos: {gguf_files}")
-            root = Tk()
-            root.withdraw()
-            model_name = simpledialog.askstring(
-                "Seleccionar modelo",
-                "Hay múltiples modelos disponibles:\n\n" + "\n".join(gguf_files) + "\n\nEscribe el nombre exacto del modelo:"
-            )
-            root.destroy()
+            try:
+                root = Tk()
+                root.title("Selección de Modelo")
 
-            if not model_name or model_name not in gguf_files:
-                self.logger.error(f"Modelo seleccionado no válido: {model_name}")
-                raise ValueError("Modelo no válido o no seleccionado.")
-            
-            self.logger.info(f"Modelo seleccionado por el usuario: {model_name}")
-            return model_dir / model_name
-        
+                # Configurar la ventana para que esté en primer plano
+                root.attributes('-topmost', True)
+                root.update()
+
+                # Centrar la ventana en la pantalla
+                window_width = 400
+                window_height = 200
+                screen_width = root.winfo_screenwidth()
+                screen_height = root.winfo_screenheight()
+                x_coordinate = (screen_width - window_width) // 2
+                y_coordinate = (screen_height - window_height) // 2
+                root.geometry(f"{window_width}x{window_height}+{x_coordinate}+{y_coordinate}")
+
+                # Crear widgets
+                label = Label(root, text="Selecciona un modelo:")
+                label.pack(pady=10)
+
+                # Variable para almacenar la selección
+                selected_model = StringVar(root)
+                selected_model.set(gguf_files[0])  # valor por defecto
+
+                # Lista desplegable con los modelos
+                dropdown = OptionMenu(root, selected_model, *gguf_files)
+                dropdown.pack(pady=10, padx=20, fill='x')
+
+                # Variable para saber si se completó la selección
+                selection_complete = False
+
+                # Función para manejar la selección
+                def on_select():
+                    nonlocal selection_complete
+                    selection_complete = True
+                    root.destroy()
+
+                # Botón para confirmar la selección
+                select_button = Button(root, text="Seleccionar", command=on_select)
+                select_button.pack(pady=20)
+
+                # Mostrar la ventana y esperar
+                root.mainloop()
+
+                # Verificar si se completó la selección
+                if not selection_complete:
+                    self.logger.warning("Ventana de selección cerrada sin elegir un modelo")
+                    return None
+
+                # Obtener el modelo seleccionado
+                model_name = selected_model.get()
+
+                if model_name and model_name in gguf_files:
+                    self.logger.info(f"Modelo seleccionado por el usuario: {model_name}")
+                    return model_dir / model_name
+                else:
+                    self.logger.error(f"Modelo seleccionado no válido: {model_name}")
+                    return None
+
+            except Exception as e:
+                self.logger.error(f"Error durante la selección del modelo: {str(e)}")
+                self._show_error_popup(f"Error durante la selección del modelo: {str(e)}")
+                return None
+
     def _load_config(self, filename):
         config_path = self.config_dir / filename
         self.logger.debug(f"Intentando cargar configuración desde: {config_path}")
@@ -329,6 +615,11 @@ class AILocalChatbot:
             print(f"ERROR: {message}")
     
     def _load_model(self):
+        if self.model_path is None:
+            self.logger.error("No se especificó una ruta de modelo válida")
+            self._show_error_popup("No se especificó una ruta de modelo válida")
+            raise FileNotFoundError("No se especificó una ruta de modelo válida")
+        
         model_file = Path(self.model_path)
         
         # Verificar que el archivo existe
@@ -429,49 +720,97 @@ class AILocalChatbot:
     
     def _detect_model_type(self, model_file):
         model_file = model_file.lower()
-        detection_map = {
-            "llama": ["llama", "alpaca", "vicuna", "guanaco"],
-            "mistral": ["mistral", "mixtral"],
-            "gpt2": ["gpt2", "distilgpt2"],
-            "falcon": ["falcon"],
-            "starcoder": ["starcoder", "codellama"],
-            "deepseek": ["deepseek", "deepcoder"]
-        }
-        
-        for model_type, keywords in detection_map.items():
-            if any(kw in model_file for kw in keywords):
-                self.logger.debug(f"Modelo detectado como tipo: {model_type}")
-                return model_type
-        
-        self.logger.warning(f"Tipo de modelo no reconocido: {model_file}.\nUsando el modelo por default.")
-        return "llama"
+
+        is_code_model = "code" in model_file or "coder" in model_file
+
+        if "mistral" in model_file or "mixtral" in model_file:
+            return "mistral"
+        elif "llama" in model_file or "alpaca" in model_file or "vicuna" in model_file or "tinyllama" in model_file:
+            return "llama"
+        elif "gpt" in model_file or "neox" in model_file:
+            return "gpt2"
+        elif "falcon" in model_file:
+            return "falcon"
+        elif "starcoder" in model_file:
+            return "starcoder"
+        elif "deepseek" in model_file:
+            if is_code_model:
+                self.logger.warning("Detectado modelo DeepSeek Coder - optimizado para código, no para chat general")
+                # Puedes mostrar una advertencia al usuario aquí
+                return "deepseek-code"
+            return "deepseek"
+        else:
+            self.logger.warning(f"Tipo de modelo no reconocido: {model_file}. Usando configuración LLaMA por defecto.")
+            return "llama"
 
     def _apply_model_specific_settings(self, model_type):
         """Aplica ajustes específicos post-carga"""
         if model_type == "starcoder":
             self.llm.set_align_code(True)
             
-    def _handle_model_load_error(self, model_type):
-        """Maneja errores de carga de manera específica"""
-        error_info = {
-            "llama": "Intente reducir 'context_length' a 2048",
-            "mistral": "Verifique la versión del modelo (preferir formatos .gguf)",
-            "falcon": "Requiere al menos 4GB de RAM libre"
+    def _handle_initialization_error(self):
+        """Maneja errores de inicialización e intenta cargar un modelo fallback desde Hugging Face"""
+        try:
+            if self._check_internet_connection():
+                self.logger.info("Intentando cargar modelo de respaldo desde Hugging Face...")
+                self._show_error_popup("No se encontró un modelo local válido. Intentando descargar modelo de respaldo...")
+
+                backup_config = self.MODEL_CONFIG["default"]
+
+                self.llm = AutoModelForCausalLM.from_pretrained(
+                    "NyxGleam/tinyllama-1.1b-chat-v1.0.Q4_K_M",
+                    model_type="llama",
+                    context_length=backup_config["context_length"],
+                    max_new_tokens=backup_config["max_new_tokens"],
+                    temperature=backup_config["temperature"],
+                    gpu_layers=0
+                )
+
+                self.logger.info("Modelo de respaldo cargado exitosamente")
+            else:
+                self.logger.error("No hay conexión a internet para cargar modelo de respaldo")
+                self._show_error_popup("No se encontró un modelo local válido y no hay conexión a internet. La aplicación no funcionará correctamente.")
+        except Exception as e:
+            self.logger.error(f"Error al cargar modelo de respaldo: {str(e)}")
+            self._show_error_popup(f"No se pudo cargar ningún modelo. La aplicación no funcionará correctamente.\nError: {str(e)}")
+
+    def _check_internet_connection(self):
+        """Verifica si hay conexión a internet disponible"""
+        try:
+            response = requests.get("https://huggingface.co", timeout=5)
+            return response.status_code == 200
+        except:
+            return False
+
+    def _clean_text_for_deepseek_coder(self, text):
+        """Limpia el texto para hacerlo compatible con DeepSeek Coder"""
+        import re
+        # Eliminar emojis y mantener solo ASCII básico
+        cleaned = re.sub(r'[^\x00-\x7F]', '', text)
+        # Reemplazar caracteres especiales del español
+        replacements = {
+            'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u',
+            'Á': 'A', 'É': 'E', 'Í': 'I', 'Ó': 'O', 'Ú': 'U',
+            'ñ': 'n', 'Ñ': 'N',
+            '¡': '!', '¿': '?'
         }
-        
-        suggestion = error_info.get(model_type, "Verifique que el archivo del modelo esté completo y sea compatible")
-        
-        self._show_error_popup(f"Error cargando modelo {model_type}:\n{suggestion}")
+        for k, v in replacements.items():
+            cleaned = cleaned.replace(k, v)
+        return cleaned
 
     def format_prompt(self, user_input):
+        model_type = getattr(self, "current_model_type", "llama")
         self.logger.debug(f"Formateando prompt para: {user_input}")
+        self.logger.debug(f"Modelo detectado como tipo: {model_type}")
     
-        # Detectar tipo de modelo
-        model_type = self._detect_model_type(self.model_path.name.lower())
-        config = self.MODEL_CONFIG.get(model_type, self.MODEL_CONFIG["default"])
-        
-        # Obtener y limpiar el mensaje de sistema
-        system_prompt = self.personality.get("system_prompt", "").strip()
+        # Limpiar el texto si es un modelo DeepSeek Coder
+        if model_type == "deepseek-code" or "deepseek" in model_type:
+            self.logger.debug("Aplicando limpieza de texto para DeepSeek Coder")
+            user_input = self._clean_text_for_deepseek_coder(user_input)
+            system_prompt = self._clean_text_for_deepseek_coder(self.personality.get("system_prompt", ""))
+        else:
+            system_prompt = self.personality.get("system_prompt", "")
+
         history = self._format_history(model_type)
         if not system_prompt:
             system_prompt = "Eres un asistente virtual útil y amable. Responde de manera concisa y coherente."
@@ -507,6 +846,8 @@ class AILocalChatbot:
 
         
         formatted_history = self._format_history(model_type)
+
+        config = self.MODEL_CONFIG[model_type]
 
         # Construir el prompt final
         final_prompt = config["prompt_template"].format(
@@ -586,7 +927,17 @@ class AILocalChatbot:
             return "Lo siento, el modelo de lenguaje no está inicializado correctamente. Por favor, reinicia la aplicación."
 
         if "buscar" in user_input.lower() or "investiga" in user_input.lower():
-            return self.handle_search_query(user_input)
+            search_response = self.handle_search_query(user_input)
+        
+            self.conversation_history.append(user_input)
+            self.conversation_history.append(search_response)
+        
+            try:
+                self.learning_system.save_interaction(user_input, search_response, "search")
+            except Exception as e:
+                self.logger.error(f"Error guardando búsqueda: {str(e)}")
+        
+            return search_response
             
         prompt = self.format_prompt(user_input)
         self.logger.debug(f"Prompt completo:\n{prompt}")
@@ -671,7 +1022,6 @@ class AILocalChatbot:
                 self.logger.debug(f"Respuesta problemática: '{response}'")
                 
                 # Elegir respuesta de fallback
-                import random
                 fallback_responses = [
                     "Hola, ¿en qué puedo ayudarte hoy?",
                     "Soy un asistente virtual. ¿Cómo puedo ayudarte?",
@@ -701,7 +1051,7 @@ class AILocalChatbot:
 
             # Aprendizaje continuo
             try:
-                self.learning_system.save_interaction(user_input, response)
+                self.learning_system.save_interaction(user_input, response, "chat")
                 self.logger.debug("Interacción guardada en el sistema de aprendizaje")
             except Exception as learn_error:
                 self.logger.error(f"Error al guardar la interacción: {str(learn_error)}")

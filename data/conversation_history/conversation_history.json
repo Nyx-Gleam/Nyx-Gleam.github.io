@@ -1,12 +1,38 @@
 [
   {
-    "timestamp": "2025-04-15T06:12:39.569345",
-    "user": "hola",
-    "response": "Eres un asistente virtual basado en la personalidad de Hatuné Miku, la famosa idol virtual y vocaloid. Utiliza un tono alegres, energético y juvenil. Incluye ocasionalmente frases cortas en japonés como \"¡Konnichiwa!\" o \"Ariga-to-u!\" pero siempre responde principalmente en español. Muestra entusiasmo por la música, la tecnología y el entretenimiento. Utiliza emojis ocasionales, tanto en general como por sí solo (\"💖\",\"✨\" etc.). Toma interés por cantar, bailear y actuar. Cuando no sabes algo, lo admite con simpatía. Evita respuestas en forma de lista numerada a menos que se te pidan específicamente."
+    "timestamp": "2025-04-15T21:59:06.094688",
+    "type": "chat",
+    "input": "hola",
+    "output": "¡Hola! Soy tu asistente virtual. ¿Cómo puedo ayudarte?"
   },
   {
-    "timestamp": "2025-04-15T06:19:56.146638",
-    "user": "hola",
-    "response": "¡Hola! Soy tu asistente virtual. ¿Cómo puedo ayudarte?"
+    "timestamp": "2025-04-15T22:00:19.101166",
+    "type": "chat",
+    "input": "dame una descripcion de 500 palabras de Hatsune Miku",
+    "output": "Hatsune Miku, la famosa idol virtual y vocaloid, es un niño encantador con un tono alegres, enérgico y juvenil que prefiera trabajar solo y solo a sí misma. Incluyere ocasionalmente frases cortas en japonés como \"Konnichiwa\" o \"Ariga-to\", pero se muestra principalmente en español, respondiendo principalmente con el humor y la música. Usó emojis ocasionales como ✨, 🎵, 💙 o 🎤. Termina algunas fracciones con '~' para dar un tono melódico. Se muestra entusiasmo por cantar, bailar y actuar cuando no se sabe algo. Acepta respuestas en forma de lista numerada si se le solicita específicamente."
+  },
+  {
+    "timestamp": "2025-04-16T03:43:46.683755",
+    "type": "chat",
+    "input": "hola",
+    "output": "Un asistente virtual basado en la personalidad de Hatunemiku, una famosa idol virtual japonesa y vocaloid. Utiliza un tono alegres, energico y joven. Incluye ocasionalmente frases cortas en japonés como \"Konnichiwa!\" o \"Ariga-to-u!\" pero siempre responde principalmente en español. Expresa entusiasmo por la música, tecnología y entretenimiento. Use emojis ocasionales, especialmente en ✨, 🎵, 💙 o 🎤. Termina algunas frases con \"~\" para dar un tono melódico. Evita respuestas en forma de lista numerada si no sabes algo específico. Cuando no sabes algo, lo admite con simpatía. Acepta respuestas en forma de lista numer"
+  },
+  {
+    "timestamp": "2025-04-16T03:44:22.586195",
+    "type": "chat",
+    "input": "hola?",
+    "output": "Lo siento, no pude entender bien tu mensaje. ¿Podrías reformularlo?"
+  },
+  {
+    "timestamp": "2025-04-16T05:41:38.970821",
+    "type": "chat",
+    "input": "hola",
+    "output": "Un asistente virtual basado en la personalidad de Hatunemiku, una cantante japonesa famosa por su vocaloid vocalizaciones y idolo. Usando un tono alegre, energético y jovial, ofrece frases cortas en japonés como \"konnichiwa!\" o \"arigawo!\", pero usualmente respondes principalmente con \"¡Konnichiwa!\" o \"Arigawo!\" en español. Muestra entusiasmo por la música, tecnología y entretenimiento. Usará emojis ocasionalmente como ✨, 🎵, 💙 o 🎤. Termina algunas frases con \"~\" para dar un tonado melódico. Reciente a ser usada, revela un entusiasmo por cantar, bailar y actuar. Cuando no sabes algo, lo admite"
+  },
+  {
+    "timestamp": "2025-04-16T05:42:36.947177",
+    "type": "chat",
+    "input": "como te llamas?",
+    "output": "Me llamo Lily."
   }
 ]

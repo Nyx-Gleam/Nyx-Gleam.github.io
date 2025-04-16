@@ -1,5 +1,7 @@
 import json
 import os
+import requests
+from bs4 import BeautifulSoup
 from datetime import datetime
 
 class ContinuousLearningSystem:
@@ -58,7 +60,7 @@ class ContinuousLearningSystem:
             print(f"Error in web search: {e}")
             return []
 
-    def save_interaction(self, user_input, response):
+    def save_interaction(self, user_input, response, interaction_type="chat"):
         """
         Guarda la interacción (mensaje de usuario y respuesta) en un archivo JSON dentro del directorio
         'conversation_history' en self.data_dir.
@@ -66,15 +68,16 @@ class ContinuousLearningSystem:
         # Directorio para guardar el historial de conversación:
         history_folder = os.path.join(self.data_dir, "conversation_history")
         os.makedirs(history_folder, exist_ok=True)
-        
+
         # Archivo donde se almacenarán las interacciones
         history_file = os.path.join(history_folder, "conversation_history.json")
-        interaction = {
+        data = {
             "timestamp": datetime.now().isoformat(),
-            "user": user_input,
-            "response": response
+            "type": interaction_type,
+            "input": user_input,
+            "output": response
         }
-        
+
         # Leer interacciones previas o iniciar con lista vacía
         if os.path.exists(history_file):
             try:
@@ -84,9 +87,10 @@ class ContinuousLearningSystem:
                 history = []
         else:
             history = []
-        
-        history.append(interaction)
-        
+
+        # Aquí está el error - usar 'data' en lugar de 'interaction'
+        history.append(data)  # Cambiado de 'interaction' a 'data'
+
         # Guardar el historial actualizado
         with open(history_file, "w", encoding="utf-8") as f:
             json.dump(history, f, ensure_ascii=False, indent=2)
